@@ -9,12 +9,15 @@ from tornado import gen
 from tornado.ioloop import IOLoop
 from tornado.tcpclient import TCPClient
 
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 24224
 READ_TIMEOUT_SEC = 2
 CONN_TIMEOUT_SEC = 2
-RETRY_COUNT = 1
+RETRY_COUNT = 2
 RESP_MAX_SIZE = 64 * 1024
 
 rd = random.Random()
+logger = logging.getLogger('tornado_fluent')
 
 
 def __gen_id():
@@ -26,13 +29,14 @@ def __gen_id():
 def read_callback(_data, request_id):
     try:
         data = msgpack.unpackb(_data)
-    except Exception:
-        logging.error("tornado-fluent: Bad response | " + str(data))
+    except Exception as e:
+        logger.exception("bad response: " + str(_data))
         return False
 
     if data.get(b'ack') == request_id:
         return True
     else:
+        logger.error('ack != request id: {}, {}'.format(data.get(b'ack'), request_id))
         return False
 
 
@@ -54,7 +58,7 @@ def __send_messages(tag, msgs, host, port, conn_timeout_sec, read_timeout_sec):
 
 
 @gen.coroutine
-def send_messages_with_timestamp(tag, msgs, host="127.0.0.1", port=24224, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
+def send_messages_with_timestamp(tag, msgs, host=DEFAULT_HOST, port=DEFAULT_PORT, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
     # tag = "your.tag"
     # msgs = [
     #     [1441588984, {"message": "foo"}],
@@ -64,17 +68,18 @@ def send_messages_with_timestamp(tag, msgs, host="127.0.0.1", port=24224, retry_
     try:
         res = yield __send_messages(tag, msgs, host, port, conn_timeout_sec, read_timeout_sec)
     except Exception as e:
-        logging.error("tornado-fluent: Error | " + str(e))
+        logger.exception("error!")
         if retry_count > 0:
-            logging.error("tornado-fluent: retrying...")
-            res = yield send_message(host, port, tag, msgs, retry_count=retry_count - 1)
+            logger.error("retrying...")
+            res = yield send_messages_with_timestamp(tag, msgs, host, port, retry_count - 1, conn_timeout_sec, read_timeout_sec)
         else:
+            logger.error("no retries left")
             return False
     return res
 
 
 @gen.coroutine
-def send_messages(tag, msgs, host="127.0.0.1", port=24224, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
+def send_messages(tag, msgs, host=DEFAULT_HOST, port=DEFAULT_PORT, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
     # tag = "your.tag"
     # msgs = [
     #     {"message": "foo"},
@@ -91,7 +96,7 @@ def send_messages(tag, msgs, host="127.0.0.1", port=24224, retry_count=RETRY_COU
 
 
 @gen.coroutine
-def send_message_with_timestamp(tag, msg, ts, host="127.0.0.1", port=24224, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
+def send_message_with_timestamp(tag, msg, ts, host=DEFAULT_HOST, port=DEFAULT_PORT, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
     # tag = "your.tag"
     # msg = {"message": "foo"}
     # ts = 1441588984
@@ -101,7 +106,7 @@ def send_message_with_timestamp(tag, msg, ts, host="127.0.0.1", port=24224, retr
 
 
 @gen.coroutine
-def send_message(tag, msg, host="127.0.0.1", port=24224, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
+def send_message(tag, msg, host=DEFAULT_HOST, port=DEFAULT_PORT, retry_count=RETRY_COUNT, conn_timeout_sec=CONN_TIMEOUT_SEC, read_timeout_sec=READ_TIMEOUT_SEC):
     # tag = "your.tag"
     # msg = {"message": "foo"}
     _msgs = [[int(time.time()), msg]]

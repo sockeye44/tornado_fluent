@@ -1,4 +1,4 @@
-# Async Fluentd client for Tornado 4
+# Async Fluentd client for Tornado 4-5
 
 ## Install
 
